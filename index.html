@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Table Soccer ELO</title>
+<style>
+/* ===== THEME: change colours here ===== */
+:root{--navy:#1F2A44;--teal:#0FA3A3;--teal-l:#E6F6F6;--bg:#F5F7FA;--card:#fff;--text:#1F2A44;--muted:#6B7385;--line:#E3E7EE;--win:#16A34A;--loss:#DC2626;--gold:#D4A017;--silver:#9AA3AF;--bronze:#B87333}
+*{box-sizing:border-box}body{margin:0;font-family:"Segoe UI",system-ui,Arial,sans-serif;background:var(--bg);color:var(--text)}
+header{background:var(--navy);color:#fff;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+header h1{margin:0;font-size:20px;font-weight:600}header h1 span{color:var(--teal)}
+#status{font-size:13px;opacity:.85}
+nav{display:flex;gap:4px;background:#fff;border-bottom:1px solid var(--line);padding:0 16px;overflow-x:auto}
+nav button{border:0;background:none;padding:14px 16px;font-size:14px;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+nav button.active{color:var(--navy);border-color:var(--teal);font-weight:600}
+main{max-width:980px;margin:24px auto;padding:0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:20px;margin-bottom:20px}
+.card h2{margin:0 0 14px;font-size:16px}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:10px 8px;text-align:left;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+td.num,th.num{text-align:right}
+.podium{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:end;margin-bottom:20px}
+.pod{background:#fff;border:1px solid var(--line);border-radius:10px;text-align:center;padding:16px 8px}
+.pod .rank{font-size:26px;font-weight:700}.pod .nm{font-weight:600;margin:6px 0}.pod .el{color:var(--muted);font-size:13px}
+.pod.p1{border-top:5px solid var(--gold);padding-top:28px}.pod.p2{border-top:5px solid var(--silver)}.pod.p3{border-top:5px solid var(--bronze)}
+.p1 .rank{color:var(--gold)}.p2 .rank{color:var(--silver)}.p3 .rank{color:var(--bronze)}
+.teams{display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:center}
+.team{border:2px solid var(--line);border-radius:10px;padding:14px;cursor:pointer;transition:.15s}
+.team.sel{border-color:var(--teal);background:var(--teal-l)}
+.team h3{margin:0 0 10px;font-size:14px;display:flex;justify-content:space-between}
+.vs{font-weight:700;color:var(--muted)}
+select,input{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:6px;font-size:14px;margin-bottom:8px;background:#fff}
+.btn{background:var(--teal);color:#fff;border:0;padding:10px 18px;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer}
+.btn:disabled{opacity:.5;cursor:not-allowed}.btn.sec{background:#fff;color:var(--navy);border:1px solid var(--line)}
+.btn.danger{background:#fff;color:var(--loss);border:1px solid var(--loss)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.hint{color:var(--muted);font-size:13px}.w{color:var(--win);font-weight:600}.l{color:var(--loss);font-weight:600}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:12px 20px;border-radius:8px;font-size:14px;display:none;z-index:9;max-width:90%}
+.hidden{display:none!important}
+@media(max-width:640px){.teams{grid-template-columns:1fr}.vs{text-align:center}th.hm,td.hm{display:none}}
+</style>
+</head>
+<body>
+<header><h1>⚽ Table Soccer <span>ELO</span></h1><div id="status">Loading…</div></header>
+<nav>
+ <button data-tab="board" class="active">Leaderboard</button>
+ <button data-tab="match">Record match</button>
+ <button data-tab="history">History</button>
+ <button data-tab="players">Players</button>
+</nav>
+<main>
+ <div class="card hidden" id="connBar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 20px">
+  <span class="hint" style="margin:0">Local mode: link the <b>data.csv</b> next to this file so every save is written to it.</span>
+  <button class="btn" id="connBtn">🔗 Connect data.csv</button>
+ </div>
+ <section id="board"></section>
+
+ <section id="match" class="hidden"><div class="card">
+  <h2>New 2v2 match</h2>
+  <p class="hint">Pick four players, then click the winning team.</p>
+  <div class="teams">
+   <div class="team" data-t="A"><h3>Team A <span class="tw"></span></h3><select id="a1"></select><select id="a2"></select></div>
+   <div class="vs">VS</div>
+   <div class="team" data-t="B"><h3>Team B <span class="tw"></span></h3><select id="b1"></select><select id="b2"></select></div>
+  </div>
+  <p id="preview" class="hint"></p>
+  <button class="btn" id="saveMatch" disabled>Save match</button>
+ </div></section>
+
+ <section id="history" class="hidden"><div class="card"><h2>Match history</h2><div id="histTbl"></div></div></section>
+
+ <section id="players" class="hidden"><div class="card">
+  <h2>Add players</h2>
+  <p class="hint">Add one name, or several at once (one per line or separated by commas).</p>
+  <textarea id="newName" rows="4" placeholder="e.g.&#10;Nathan&#10;Emmelie, Lorien" style="width:100%;max-width:420px;padding:9px 10px;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:14px"></textarea>
+  <div class="row" style="margin-top:8px"><button class="btn" id="addPlayer">Add players</button></div>
+  <div id="plist" style="margin-top:16px"></div>
+ </div>
+ <div class="card"><h2>Admin / data</h2>
+  <div class="row">
+   <button class="btn sec" id="dlCsv">Download data.csv</button>
+   <button class="btn sec" id="dlZip">Download site ZIP</button>
+   <label class="btn sec">Load CSV file<input type="file" id="upCsv" accept=".csv" class="hidden"></label>
+  </div>
+  <p class="hint"><b>Download site ZIP</b> bundles index.html + the current data.csv, ready to upload to Tiiny Host. In Firefox/Safari (no direct file writing) use Load CSV / Download data.csv instead.</p>
+ </div></section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===================== SETTINGS ===================== */
+const CONFIG = {
+  // ---- GitHub Pages storage (free) ----
+  GITHUB_ENABLED: true,
+  GITHUB_OWNER:  "natjelin",            // e.g. nathanlingier
+  GITHUB_REPO:   "table-soccer",                    // repository name
+  GITHUB_BRANCH: "main",
+  GITHUB_TOKEN:  "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",    // fine-grained token: this repo only, Contents = Read and write
+  DATA_PATH:     "data.csv",
+  // ---- Tiiny Host (paid API, not used) ----
+  TIINY_ENABLED: false,                            // switch to true when you go live on Tiiny Host
+  TIINY_API_KEY: "PASTE_YOUR_TIINY_API_KEY_HERE",   // Tiiny Host > Account > API key
+  TIINY_DOMAIN:  "your-site.tiiny.site",            // your site's address, without https://
+  TIINY_ENDPOINT:"https://ext.tiiny.host/v1/upload",// update endpoint (check api-docs.tiiny.host)
+  START_ELO: 1000,
+  K: 32
+};
+/* ==================================================== */
+
+let players=[], matches=[], deleted=[], winner=null;
+const $=id=>document.getElementById(id);
+const toast=(m,ms=3500)=>{const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(t._t);t._t=setTimeout(()=>t.style.display='none',ms)};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- CSV ---------- */
+const HEAD=['type','id','date','name','a1','a2','b1','b2','winner'];
+function csvCell(v){v=v==null?'':String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
+function toCSV(){const r=[HEAD.join(',')];
+ players.forEach(p=>r.push(['player',p.id,p.date,p.name,'','','','',''].map(csvCell).join(',')));
+ matches.forEach(m=>r.push(['match',m.id,m.date,'',m.a1,m.a2,m.b1,m.b2,m.winner].map(csvCell).join(',')));
+ deleted.forEach(id=>r.push(['deleted',id,'','','','','','',''].map(csvCell).join(',')));
+ return r.join('\n')+'\n'}
+function parseCSV(txt){const rows=[];let row=[],cur='',q=false;
+ for(let i=0;i<txt.length;i++){const c=txt[i];
+  if(q){if(c=='"'){if(txt[i+1]=='"'){cur+='"';i++}else q=false}else cur+=c}
+  else if(c=='"')q=true;else if(c==','){row.push(cur);cur=''}
+  else if(c=='\n'||c=='\r'){if(c=='\r'&&txt[i+1]=='\n')i++;row.push(cur);rows.push(row);row=[];cur=''}
+  else cur+=c}
+ if(cur||row.length){row.push(cur);rows.push(row)}
+ const P=[],M=[],D=[];rows.slice(1).forEach(r=>{if(r[0]=='deleted')D.push(r[1]);else if(r[0]=='player')P.push({id:r[1],date:r[2],name:r[3]});
+  else if(r[0]=='match')M.push({id:r[1],date:r[2],a1:r[4],a2:r[5],b1:r[6],b2:r[7],winner:r[8]})});
+ return {P,M,D}}
+
+/* ---------- ELO (replayed from history) ---------- */
+function compute(){const s={};players.forEach(p=>s[p.id]={...p,elo:CONFIG.START_ELO,w:0,l:0,streak:0,form:[]});
+ const deltas={};
+ [...matches].sort((a,b)=>a.date.localeCompare(b.date)).forEach(m=>{
+  const ids=[m.a1,m.a2,m.b1,m.b2];if(ids.some(i=>!s[i]))return;
+  const rA=(s[m.a1].elo+s[m.a2].elo)/2,rB=(s[m.b1].elo+s[m.b2].elo)/2;
+  const eA=1/(1+Math.pow(10,(rB-rA)/400)),sA=m.winner=='A'?1:0;
+  const d=Math.round(CONFIG.K*(sA-eA));deltas[m.id]=Math.abs(d);
+  [[m.a1,d,sA],[m.a2,d,sA],[m.b1,-d,1-sA],[m.b2,-d,1-sA]].forEach(([id,dd,won])=>{const p=s[id];p.elo+=dd;
+   won?p.w++:p.l++;p.streak=won?(p.streak>0?p.streak+1:1):(p.streak<0?p.streak-1:-1);p.form.push(won?'W':'L')})});
+ return {stats:s,deltas}}
+function predict(a1,a2,b1,b2){const {stats:s}=compute();const rA=(s[a1].elo+s[a2].elo)/2,rB=(s[b1].elo+s[b2].elo)/2;
+ const eA=1/(1+Math.pow(10,(rB-rA)/400));return {eA,win:Math.round(CONFIG.K*(1-eA)),lose:Math.round(CONFIG.K*eA)}}
+
+/* ---------- Render ---------- */
+const nm=id=>(players.find(p=>p.id==id)||{name:'?'}).name;
+function render(){const {stats,deltas}=compute();
+ const list=Object.values(stats).sort((a,b)=>b.elo-a.elo||b.w-a.w);
+ const active=list.filter(p=>p.w+p.l>0);
+ let h='';
+ if(active.length>=3){const ord=[1,0,2];h+='<div class="podium">'+ord.map(i=>`<div class="pod p${i+1}"><div class="rank">${i+1}</div><div class="nm">${esc(active[i].name)}</div><div class="el">${active[i].elo} pts</div></div>`).join('')+'</div>'}
+ h+='<div class="card"><h2>Rankings</h2>';
+ if(!list.length)h+='<p class="hint">No players yet — add some under <b>Players</b>.</p>';
+ else h+='<table><tr><th>#</th><th>Player</th><th class="num">ELO</th><th class="num">W</th><th class="num">L</th><th class="num hm">Win %</th><th class="hm">Form</th></tr>'+
+  list.map((p,i)=>{const g=p.w+p.l,st=p.streak>=3?' 🔥':'';
+   return `<tr><td>${i+1}</td><td>${esc(p.name)}${st}</td><td class="num"><b>${p.elo}</b></td><td class="num">${p.w}</td><td class="num">${p.l}</td><td class="num hm">${g?Math.round(p.w/g*100)+'%':'–'}</td><td class="hm">${p.form.slice(-5).map(f=>`<span class="${f=='W'?'w':'l'}">${f}</span>`).join(' ')}</td></tr>`}).join('')+'</table>';
+ $('board').innerHTML=h+'</div>';
+ // history
+ const hs=[...matches].sort((a,b)=>b.date.localeCompare(a.date));
+ $('histTbl').innerHTML=hs.length?'<table><tr><th>Date</th><th>Winners</th><th>Losers</th><th class="num">± ELO</th><th></th></tr>'+hs.map(m=>{
+  const W=m.winner=='A'?[m.a1,m.a2]:[m.b1,m.b2],L=m.winner=='A'?[m.b1,m.b2]:[m.a1,m.a2];
+  return `<tr><td>${new Date(m.date).toLocaleString([], {dateStyle:'short',timeStyle:'short'})}</td><td class="w">${W.map(x=>esc(nm(x))).join(' & ')}</td><td>${L.map(x=>esc(nm(x))).join(' & ')}</td><td class="num">${deltas[m.id]??''}</td><td><button class="btn danger" style="padding:4px 10px" onclick="delMatch('${m.id}')">Delete</button></td></tr>`}).join('')+'</table>':'<p class="hint">No matches yet.</p>';
+ // selects
+ const opts='<option value="">— select player —</option>'+[...players].sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+ ['a1','a2','b1','b2'].forEach(k=>{const v=$(k).value;$(k).innerHTML=opts;$(k).value=v});
+ $('plist').innerHTML=players.length?'<p class="hint" style="margin:0 0 6px">'+players.length+' players</p>'+[...players].sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<span style="display:inline-block;background:var(--teal-l);border-radius:14px;padding:4px 12px;margin:0 6px 6px 0;font-size:13px">${esc(p.name)}</span>`).join(''):'';
+ updMatch()}
+function updMatch(){const v=['a1','a2','b1','b2'].map(k=>$(k).value);
+ const ok=v.every(x=>x)&&new Set(v).size==4;
+ document.querySelectorAll('.team').forEach(t=>{t.classList.toggle('sel',t.dataset.t==winner);t.querySelector('.tw').textContent=t.dataset.t==winner?'🏆 Winner':''});
+ if(v.every(x=>x)&&!ok)$('preview').textContent='Each player can only appear once.';
+ else if(ok){const p=predict(...v);$('preview').textContent=`Win chance Team A ${Math.round(p.eA*100)}% · Team A wins: +${p.win} / Team B wins: +${p.lose}`}
+ else $('preview').textContent='';
+ $('saveMatch').disabled=!(ok&&winner)}
+
+/* ---------- ZIP (store, no compression) ---------- */
+const CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+const crc32=b=>{let c=0xFFFFFFFF;for(const x of b)c=CRC[(c^x)&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0};
+function makeZip(files){const enc=new TextEncoder(),parts=[],cen=[];let off=0;
+ files.forEach(f=>{const n=enc.encode(f.name),d=typeof f.data=='string'?enc.encode(f.data):f.data,c=crc32(d);
+  const h=new DataView(new ArrayBuffer(30));h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint32(14,c,true);h.setUint32(18,d.length,true);h.setUint32(22,d.length,true);h.setUint16(26,n.length,true);
+  parts.push(h.buffer,n,d);
+  const ch=new DataView(new ArrayBuffer(46));ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint32(16,c,true);ch.setUint32(20,d.length,true);ch.setUint32(24,d.length,true);ch.setUint16(28,n.length,true);ch.setUint32(42,off,true);
+  cen.push(ch.buffer,n);off+=30+n.length+d.length});
+ const cs=cen.reduce((s,x)=>s+(x.byteLength||x.length),0),e=new DataView(new ArrayBuffer(22));
+ e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cs,true);e.setUint32(16,off,true);
+ return new Blob([...parts,...cen,e.buffer],{type:'application/zip'})}
+async function ownHTML(){try{const r=await fetch('index.html?v='+Date.now(),{cache:'no-store'});if(r.ok)return await r.text()}catch(e){}
+ return '<!DOCTYPE html>\n'+document.documentElement.outerHTML}
+const dl=(blob,name)=>{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)};
+async function buildZip(){return makeZip([{name:'index.html',data:await ownHTML()},{name:'data.csv',data:toCSV()}])}
+
+/* ---------- Load / publish ---------- */
+/* Storage modes:
+   - LOCAL (file://): the page links to a data.csv file next to it via "Connect data.csv" (Edge/Chrome).
+     Every save is written straight back into that file. The link is remembered for next time.
+   - HOSTED (http/https, e.g. Tiiny later): data.csv is read by relative path; publishing via API if enabled. */
+let fileHandle=null;
+const IS_LOCAL=location.protocol=='file:';
+const FS_OK='showOpenFilePicker' in window;
+// tiny IndexedDB helper to remember the file link
+const idb=(mode,fn)=>new Promise((res,rej)=>{const o=indexedDB.open('tsElo',1);o.onupgradeneeded=()=>o.result.createObjectStore('kv');
+ o.onsuccess=()=>{const tx=o.result.transaction('kv',mode),r=fn(tx.objectStore('kv'));tx.oncomplete=()=>res(r&&r.result);tx.onerror=()=>rej(tx.error)};o.onerror=()=>rej(o.error)});
+const idbGet=k=>idb('readonly',st=>st.get(k)).catch(()=>null);
+const idbSet=(k,v)=>idb('readwrite',st=>st.put(v,k)).catch(()=>null);
+
+async function readFileHandle(){const f=await fileHandle.getFile();return parseCSV(await f.text())}
+async function writeFileHandle(){const w=await fileHandle.createWritable();await w.write(toCSV());await w.close()}
+async function connectFile(){
+ if(!FS_OK)return toast('This browser cannot write files directly — use Edge or Chrome, or use Load/Download CSV.',6000);
+ try{[fileHandle]=await window.showOpenFilePicker({types:[{description:'CSV',accept:{'text/csv':['.csv']}}],multiple:false});
+  await idbSet('handle',fileHandle);mergeIn(await readFileHandle());
+  await writeFileHandle();localStorage.removeItem('tsElo');updConn();render();toast('Connected to '+fileHandle.name+' ✓')}
+ catch(e){if(e.name!='AbortError'){console.error(e);toast('Could not connect: '+e.message)}}}
+async function reconnect(){ // after reload the browser asks permission again
+ if(!fileHandle)return false;
+ let p=await fileHandle.queryPermission({mode:'readwrite'});
+ if(p!='granted')p=await fileHandle.requestPermission({mode:'readwrite'});
+ return p=='granted'}
+function updConn(){const b=$('connBtn');if(!b)return;
+ if(fileHandle){b.textContent='📄 '+fileHandle.name+' (change)';b.classList.add('sec')}else{b.textContent='🔗 Connect data.csv';b.classList.remove('sec')}
+ $('connBar').classList.toggle('hidden',!IS_LOCAL)}
+
+/* ---------- GitHub storage ---------- */
+const GH_ON=()=>CONFIG.GITHUB_ENABLED&&!IS_LOCAL&&!CONFIG.GITHUB_OWNER.startsWith('YOUR');
+let ghSha=null;
+const ghUrl=()=>`https://api.github.com/repos/${CONFIG.GITHUB_OWNER}/${CONFIG.GITHUB_REPO}/contents/${CONFIG.DATA_PATH}`;
+const ghHead=()=>{const h={'Accept':'application/vnd.github+json'};if(!CONFIG.GITHUB_TOKEN.startsWith('PASTE'))h.Authorization='Bearer '+CONFIG.GITHUB_TOKEN;return h};
+const b64dec=b=>new TextDecoder().decode(Uint8Array.from(atob(b.replace(/\s/g,'')),c=>c.charCodeAt(0)));
+const b64enc=t=>{const u=new TextEncoder().encode(t);let s='';u.forEach(c=>s+=String.fromCharCode(c));return btoa(s)};
+async function ghRead(){const r=await fetch(ghUrl()+'?ref='+CONFIG.GITHUB_BRANCH+'&t='+Date.now(),{headers:ghHead(),cache:'no-store'});
+ if(r.status==404){ghSha=null;return {P:[],M:[],D:[]}}
+ if(!r.ok)throw new Error('GitHub read HTTP '+r.status);
+ const j=await r.json();ghSha=j.sha;return parseCSV(b64dec(j.content))}
+async function ghWrite(){const body={message:'Update scores '+new Date().toISOString(),content:b64enc(toCSV()),branch:CONFIG.GITHUB_BRANCH};
+ if(ghSha)body.sha=ghSha;
+ const r=await fetch(ghUrl(),{method:'PUT',headers:{...ghHead(),'Content-Type':'application/json'},body:JSON.stringify(body)});
+ if(!r.ok){const e=new Error('GitHub save HTTP '+r.status);e.status=r.status;throw e}
+ ghSha=(await r.json()).content.sha}
+
+async function loadRemote(){
+ if(GH_ON()){try{return await ghRead()}catch(e){console.error(e);}}
+ if(IS_LOCAL){if(fileHandle&&(await fileHandle.queryPermission({mode:'readwrite'}))=='granted'){try{return await readFileHandle()}catch(e){}}return null}
+ try{const r=await fetch('./data.csv?v='+Date.now(),{cache:'no-store'});if(!r.ok)throw 0;return parseCSV(await r.text())}catch(e){return null}}
+function mergeIn({P=[],M=[],D=[]}){D.forEach(id=>{if(!deleted.includes(id))deleted.push(id)});
+ P.forEach(p=>{if(!players.some(x=>x.id==p.id||x.name.toLowerCase()==p.name.toLowerCase()))players.push(p)});
+ M.forEach(m=>{if(!matches.some(x=>x.id==m.id))matches.push(m)});
+ matches=matches.filter(m=>!deleted.includes(m.id))}
+function savePending(){localStorage.setItem('tsElo',toCSV())}
+async function publish(change){
+ if(IS_LOCAL&&fileHandle&&!(await reconnect().catch(()=>false))){toast('Permission to data.csv was refused — saved in browser only');}
+ const remote=await loadRemote();
+ if(remote)mergeIn(remote);          // MERGE, never replace
+ change();mergeIn({});render();savePending();
+ if(IS_LOCAL){
+  if(fileHandle&&(await fileHandle.queryPermission({mode:'readwrite'}))=='granted'){
+   try{await writeFileHandle();localStorage.removeItem('tsElo');status('Saved to '+fileHandle.name+' ✓ '+new Date().toLocaleTimeString())}
+   catch(e){console.error(e);status('Write failed — saved in browser');toast('Could not write the CSV: '+e.message,6000)}}
+  else{status('Saved in browser only');toast('Saved in this browser. Click "Connect data.csv" to store it in the file.',5000)}
+  return}
+ if(GH_ON()){status('Saving…');
+  for(let i=0;i<3;i++){try{await ghWrite();localStorage.removeItem('tsElo');status('Saved for everyone ✓ '+new Date().toLocaleTimeString());return}
+   catch(e){console.error(e);
+    if(e.status==409||e.status==422){mergeIn(await ghRead());render();continue}   // someone saved at the same time → merge & retry
+    status('Save failed — kept in browser');toast(e.status==401||e.status==403?'GitHub refused the save: check the token.':'Could not save to GitHub ('+e.message+'). Kept in this browser; it will be included in the next save.',6000);return}}
+  status('Save failed — busy, try again');return}
+ if(!CONFIG.TIINY_ENABLED){status('Saved in browser — publishing off');return}
+ status('Publishing…');
+ try{const fd=new FormData();fd.append('domain',CONFIG.TIINY_DOMAIN);
+  fd.append('files',await buildZip(),'site.zip');
+  const r=await fetch(CONFIG.TIINY_ENDPOINT,{method:'PUT',headers:{'x-api-key':CONFIG.TIINY_API_KEY},body:fd});
+  if(!r.ok)throw new Error('HTTP '+r.status+' '+(await r.text()).slice(0,150));
+  localStorage.removeItem('tsElo');status('Published ✓ '+new Date().toLocaleTimeString());toast('Saved and published for everyone ✓')}
+ catch(e){console.error(e);status('Publish failed — saved locally');toast('Publishing failed ('+e.message+'). A ZIP is downloading for manual upload.',6000);dl(await buildZip(),'table-soccer-site.zip')}}
+const status=t=>$('status').textContent=t;
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+
+/* ---------- Actions ---------- */
+$('addPlayer').onclick=()=>{
+ const names=[...new Set($('newName').value.split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean))];
+ if(!names.length)return;
+ const fresh=names.filter(n=>!players.some(p=>p.name.toLowerCase()==n.toLowerCase()));
+ const dup=names.length-fresh.length;
+ if(!fresh.length)return toast('All of these players already exist');
+ $('newName').value='';
+ publish(()=>fresh.forEach(n=>{if(!players.some(p=>p.name.toLowerCase()==n.toLowerCase()))players.push({id:uid(),date:new Date().toISOString(),name:n})}));
+ toast(`${fresh.length} player(s) added`+(dup?` · ${dup} already existed`:''))};
+$('newName').onkeydown=e=>{if(e.key=='Enter'&&(e.ctrlKey||e.metaKey))$('addPlayer').click()};
+$('saveMatch').onclick=()=>{const m={id:uid(),date:new Date().toISOString(),a1:$('a1').value,a2:$('a2').value,b1:$('b1').value,b2:$('b2').value,winner};
+ winner=null;['a1','a2','b1','b2'].forEach(k=>$(k).value='');publish(()=>matches.push(m));showTab('board')};
+window.delMatch=id=>{if(confirm('Delete this match? Ratings will be recalculated.'))publish(()=>{if(!deleted.includes(id))deleted.push(id);matches=matches.filter(m=>m.id!=id)})};
+document.querySelectorAll('.team').forEach(t=>t.onclick=e=>{if(e.target.tagName=='SELECT')return;winner=winner==t.dataset.t?null:t.dataset.t;updMatch()});
+['a1','a2','b1','b2'].forEach(k=>$(k).onchange=updMatch);
+$('dlCsv').onclick=()=>dl(new Blob([toCSV()],{type:'text/csv'}),'data.csv');
+$('dlZip').onclick=async()=>dl(await buildZip(),'table-soccer-site.zip');
+$('upCsv').onchange=async e=>{const f=e.target.files[0];if(!f)return;const {P,M,D}=parseCSV(await f.text());players=P;matches=M;deleted=D;savePending();render();toast('CSV loaded')};
+function showTab(t){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab==t));['board','match','history','players'].forEach(s=>$(s).classList.toggle('hidden',s!=t))}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+
+$('connBtn').onclick=connectFile;
+(async()=>{
+ if(IS_LOCAL&&FS_OK){fileHandle=await idbGet('handle');
+  if(fileHandle&&(await fileHandle.queryPermission({mode:'readwrite'}))!='granted'){const b=$('connBtn');updConn();b.textContent='🔓 Reopen '+fileHandle.name;b.onclick=async()=>{if(await reconnect()){mergeIn(await readFileHandle());await writeFileHandle();b.onclick=connectFile;updConn();render();status('Loaded from '+fileHandle.name)}}}}
+ updConn();if(IS_LOCAL&&fileHandle&&$('connBtn').textContent.startsWith('🔓'))$('connBtn').classList.remove('sec');
+ const r=await loadRemote();
+ if(r){mergeIn(r);status(IS_LOCAL?'Loaded from '+fileHandle.name:'Live data loaded')}
+ if(GH_ON()&&localStorage.getItem('tsElo')){/* unsent local changes get pushed on next save */}
+ const pend=localStorage.getItem('tsElo');if(pend){mergeIn(parseCSV(pend));if(!r)status('Local data (CSV not found)')}
+ if(!r&&!pend)status(IS_LOCAL?'Not connected to data.csv yet':'No data.csv found — starting empty');
+ if(!r&&IS_LOCAL)status(fileHandle?'Click “Reopen” to load data.csv':'Not connected to data.csv yet');
+ render()})();
+</script>
+</body>
+</html>
